@@ -162,12 +162,12 @@ class ProductIntegrationTest {
 
     @Test
     @Order(9)
-    @DisplayName("Admin can delete product")
+    @DisplayName("Admin can delete product – expects 204 No Content")
     void adminCanDelete() throws Exception {
         mockMvc.perform(delete("/api/v1/products/" + createdProductId)
                         .with(csrf())
                         .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isOk());
+                .andExpect(status().isNoContent());
     }
 
     @Test

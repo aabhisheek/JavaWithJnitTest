@@ -76,20 +76,27 @@ http://localhost:8080/swagger-ui.html
 > **Requires:** Docker Desktop running.
 
 ```bash
-# 1 — Clone / download the project
+# 1 — Clone the repository
 cd product-api
 
-# 2 — Build & start both services (PostgreSQL + Spring Boot)
+# 2 — Copy env template and adjust if needed
+cp .env.example .env
+
+# 3 — Build & start all three services (PostgreSQL + Redis + Spring Boot)
 docker-compose up --build
 
-# 3 — API is ready at
+# 4 — API is ready at
 http://localhost:8080/swagger-ui.html
 ```
 
-`docker-compose up --build` will:
-1. Pull `postgres:16-alpine` and start it.
-2. Build the Spring Boot image via the multi-stage `Dockerfile`.
-3. Start the app once PostgreSQL passes its health check.
+`docker-compose up --build` starts three services in order:
+1. `postgres:16-alpine` – waits until healthy
+2. `redis:7-alpine` – waits until healthy
+3. Spring Boot app – starts once both dependencies are healthy
+
+### Postman
+
+Import `postman_collection.json` into Postman. Collection variables `accessToken` and `refreshToken` are captured automatically after `Register` or `Login`.
 
 > Change secrets/ports in `docker-compose.yml` → `environment` section before deploying to production.
 
@@ -137,6 +144,9 @@ The app reads environment variables; defaults fall back to `localhost:5432/produ
 | `DB_NAME` | `productdb` | Database name |
 | `DB_USERNAME` | `postgres` | DB user |
 | `DB_PASSWORD` | `postgres` | DB password |
+| `REDIS_HOST` | `localhost` | Redis host (access-token blacklist) |
+| `REDIS_PORT` | `6379` | Redis port |
+| `REDIS_PASSWORD` | *(empty)* | Redis auth password (optional) |
 | `JWT_SECRET` | *(built-in dev key)* | Must be ≥ 256-bit in production |
 | `JWT_ACCESS_EXPIRY` | `900000` | Access token TTL (ms) |
 | `JWT_REFRESH_EXPIRY` | `604800000` | Refresh token TTL (ms) |
@@ -191,7 +201,35 @@ Hibernate auto-creates all tables on startup (`ddl-auto: update`).
 | Database | PostgreSQL 16 |
 | Security | Spring Security 6 + JJWT 0.12 |
 | Validation | Jakarta Validation (Bean Validation 3) |
-| Docs | springdoc-openapi (Swagger UI) |
-| Testing | JUnit 5, Mockito, Spring Boot Test, H2 |
+| Mapping | MapStruct 1.5 (compile-time DTO mappers) |
+| Rate Limiting | Bucket4j (token-bucket, per IP) |
+| Docs | springdoc-openapi (Swagger UI with examples) |
+| Monitoring | Spring Boot Actuator (`/actuator/health`) |
+| Testing | JUnit 5, Mockito, Spring Boot Test, H2, JaCoCo |
 | Container | Docker + Docker Compose |
 | Build | Maven 3.9 |
+
+---
+
+## Security Hardening
+
+| Feature | Detail |
+|---|---|
+| JWT access token | 15-minute TTL, signed with HS256 |
+| Refresh token rotation | UUID rotated on every use; only SHA-256 hash stored in DB |
+| Rate limiting | 10 req/min on `/auth/login` & `/auth/register` per IP (Bucket4j) |
+| HSTS | `Strict-Transport-Security: max-age=31536000; includeSubDomains` |
+| Frame denial | `X-Frame-Options: DENY` |
+| Content-type sniffing | `X-Content-Type-Options: nosniff` |
+| CORS | Configurable origin whitelist |
+| Role-based access | `ROLE_ADMIN` required for DELETE; `ROLE_USER` for read/write |
+
+---
+
+## Code Coverage
+
+```bash
+./mvnw verify
+# HTML report: target/site/jacoco/index.html
+# Build fails if LINE coverage < 70%
+```

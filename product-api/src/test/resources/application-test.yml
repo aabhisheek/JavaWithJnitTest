@@ -17,10 +17,21 @@ spring:
     console:
       enabled: false
 
+  # ── Disable Redis autoconfiguration in tests ─────────────────────────────────
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
 jwt:
   secret: TestSecretKeyForJUnitTestsOnlyZestIndia2024MustBeAtLeast256Bits!!
   access-token-expiration: 900000
   refresh-token-expiration: 604800000
+
+# ── Use NoOpTokenBlacklistService – no Redis needed ───────────────────────────
+app:
+  token-blacklist:
+    enabled: false
 
 logging:
   level:

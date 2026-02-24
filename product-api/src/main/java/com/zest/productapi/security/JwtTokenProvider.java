@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 @Slf4j
@@ -40,6 +41,7 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
                 .subject(subject)
+                .id(UUID.randomUUID().toString())   // jti – unique per token, used for blacklisting
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(signingKey())
@@ -47,12 +49,22 @@ public class JwtTokenProvider {
     }
 
     public String getUsernameFromToken(String token) {
-        return Jwts.parser()
-                .verifyWith(signingKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload()
-                .getSubject();
+        return claims(token).getSubject();
+    }
+
+    /** Returns the JWT ID claim (used as the blacklist key). */
+    public String getJtiFromToken(String token) {
+        return claims(token).getId();
+    }
+
+    /**
+     * Returns how many milliseconds remain until the token expires.
+     * Returns 0 if the token is already past its expiry.
+     */
+    public long getRemainingValidityMillis(String token) {
+        long expiry = claims(token).getExpiration().getTime();
+        long remaining = expiry - System.currentTimeMillis();
+        return Math.max(remaining, 0);
     }
 
     public boolean validateToken(String token) {
@@ -68,5 +80,13 @@ public class JwtTokenProvider {
             log.warn("Invalid JWT token: {}", ex.getMessage());
         }
         return false;
+    }
+
+    private Claims claims(String token) {
+        return Jwts.parser()
+                .verifyWith(signingKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 }

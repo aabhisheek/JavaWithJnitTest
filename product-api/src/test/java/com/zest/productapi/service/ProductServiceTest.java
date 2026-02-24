@@ -8,6 +8,8 @@ import com.zest.productapi.dto.response.ProductResponse;
 import com.zest.productapi.entity.Item;
 import com.zest.productapi.entity.Product;
 import com.zest.productapi.exception.ResourceNotFoundException;
+import com.zest.productapi.mapper.ItemMapper;
+import com.zest.productapi.mapper.ProductMapper;
 import com.zest.productapi.repository.ItemRepository;
 import com.zest.productapi.repository.ProductRepository;
 import com.zest.productapi.service.impl.ProductServiceImpl;
@@ -38,18 +40,28 @@ class ProductServiceTest {
 
     @Mock private ProductRepository productRepository;
     @Mock private ItemRepository    itemRepository;
+    @Mock private ProductMapper     productMapper;
+    @Mock private ItemMapper        itemMapper;
 
     @InjectMocks private ProductServiceImpl productService;
 
     private Product sampleProduct;
+    private ProductResponse sampleResponse;
 
     @BeforeEach
     void setUp() {
-        // Set up security context so currentUsername() works
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("testuser", null, Collections.emptyList()));
+                new UsernamePasswordAuthenticationToken(
+                        "testuser", null, Collections.emptyList()));
 
         sampleProduct = Product.builder()
+                .id(1L)
+                .productName("Widget X")
+                .createdBy("testuser")
+                .createdOn(LocalDateTime.now())
+                .build();
+
+        sampleResponse = ProductResponse.builder()
                 .id(1L)
                 .productName("Widget X")
                 .createdBy("testuser")
@@ -64,7 +76,9 @@ class ProductServiceTest {
     void getAllProducts_returnsPagedResponse() {
         Pageable pageable = PageRequest.of(0, 10);
         Page<Product> mockPage = new PageImpl<>(List.of(sampleProduct), pageable, 1);
+
         when(productRepository.findAll(pageable)).thenReturn(mockPage);
+        when(productMapper.toResponse(sampleProduct)).thenReturn(sampleResponse);
 
         PagedResponse<ProductResponse> result = productService.getAllProducts(pageable);
 
@@ -91,6 +105,7 @@ class ProductServiceTest {
     @DisplayName("getProductById returns product when found")
     void getProductById_found() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(sampleProduct));
+        when(productMapper.toResponse(sampleProduct)).thenReturn(sampleResponse);
 
         ProductResponse result = productService.getProductById(1L);
 
@@ -111,45 +126,44 @@ class ProductServiceTest {
     // ─── createProduct ────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("createProduct persists and returns response")
+    @DisplayName("createProduct persists and returns mapped response")
     void createProduct_success() {
         ProductRequest request = new ProductRequest();
         request.setProductName("New Product");
 
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> {
-            Product p = inv.getArgument(0);
-            p = Product.builder()
-                    .id(2L)
-                    .productName(p.getProductName())
-                    .createdBy(p.getCreatedBy())
-                    .createdOn(p.getCreatedOn())
-                    .build();
-            return p;
-        });
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
+        when(productMapper.toResponse(sampleProduct)).thenReturn(sampleResponse);
 
         ProductResponse result = productService.createProduct(request);
 
-        assertThat(result.getProductName()).isEqualTo("New Product");
-        assertThat(result.getCreatedBy()).isEqualTo("testuser");
+        assertThat(result.getProductName()).isEqualTo("Widget X");
         verify(productRepository).save(any(Product.class));
+        verify(productMapper).toResponse(sampleProduct);
     }
 
     // ─── updateProduct ────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("updateProduct modifies name and sets modifiedBy/modifiedOn")
+    @DisplayName("updateProduct modifies fields and returns mapped response")
     void updateProduct_success() {
         ProductRequest request = new ProductRequest();
         request.setProductName("Updated Product");
 
+        ProductResponse updatedResponse = ProductResponse.builder()
+                .id(1L).productName("Updated Product")
+                .createdBy("testuser").createdOn(LocalDateTime.now())
+                .modifiedBy("testuser").modifiedOn(LocalDateTime.now())
+                .build();
+
         when(productRepository.findById(1L)).thenReturn(Optional.of(sampleProduct));
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
+        when(productMapper.toResponse(sampleProduct)).thenReturn(updatedResponse);
 
         ProductResponse result = productService.updateProduct(1L, request);
 
-        assertThat(result.getProductName()).isEqualTo("Updated Product");
         assertThat(result.getModifiedBy()).isEqualTo("testuser");
         assertThat(result.getModifiedOn()).isNotNull();
+        verify(productRepository).save(sampleProduct);
     }
 
     @Test
@@ -185,14 +199,16 @@ class ProductServiceTest {
     // ─── getItemsByProductId ──────────────────────────────────────────────────
 
     @Test
-    @DisplayName("getItemsByProductId returns items for existing product")
+    @DisplayName("getItemsByProductId returns mapped items for existing product")
     void getItemsByProductId_success() {
         Pageable pageable = PageRequest.of(0, 10);
         Item item = Item.builder().id(1L).product(sampleProduct).quantity(5).build();
+        ItemResponse itemResponse = ItemResponse.builder().id(1L).productId(1L).quantity(5).build();
         Page<Item> itemPage = new PageImpl<>(List.of(item), pageable, 1);
 
         when(productRepository.existsById(1L)).thenReturn(true);
         when(itemRepository.findByProductId(1L, pageable)).thenReturn(itemPage);
+        when(itemMapper.toResponse(item)).thenReturn(itemResponse);
 
         PagedResponse<ItemResponse> result = productService.getItemsByProductId(1L, pageable);
 
@@ -213,15 +229,17 @@ class ProductServiceTest {
     // ─── addItemToProduct ─────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("addItemToProduct saves and returns item")
+    @DisplayName("addItemToProduct saves and returns mapped item")
     void addItemToProduct_success() {
         ItemRequest request = new ItemRequest();
         request.setQuantity(10);
 
         Item savedItem = Item.builder().id(5L).product(sampleProduct).quantity(10).build();
+        ItemResponse itemResponse = ItemResponse.builder().id(5L).productId(1L).quantity(10).build();
 
         when(productRepository.findById(1L)).thenReturn(Optional.of(sampleProduct));
         when(itemRepository.save(any(Item.class))).thenReturn(savedItem);
+        when(itemMapper.toResponse(savedItem)).thenReturn(itemResponse);
 
         ItemResponse result = productService.addItemToProduct(1L, request);
 

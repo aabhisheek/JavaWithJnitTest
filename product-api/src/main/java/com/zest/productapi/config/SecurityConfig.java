@@ -1,5 +1,6 @@
 package com.zest.productapi.config;
 
+import com.zest.productapi.filter.RateLimitFilter;
 import com.zest.productapi.security.JwtAuthenticationFilter;
 import com.zest.productapi.security.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -32,6 +34,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsServiceImpl  userDetailsService;
+    private final RateLimitFilter         rateLimitFilter;
 
     private static final String[] PUBLIC_URLS = {
         "/api/v1/auth/**",
@@ -39,24 +42,52 @@ public class SecurityConfig {
         "/swagger-ui.html",
         "/api-docs/**",
         "/v3/api-docs/**",
-        "/actuator/health"
+        "/actuator/health",
+        "/actuator/info"
     };
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+            // ── CSRF disabled – stateless JWT API ──────────────────
             .csrf(AbstractHttpConfigurer::disable)
+
+            // ── CORS ───────────────────────────────────────────────
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
+            // ── Stateless sessions ─────────────────────────────────
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+            // ── Security headers ───────────────────────────────────
+            .headers(headers -> headers
+                // HSTS: browser must use HTTPS for 1 year, incl. subdomains
+                .httpStrictTransportSecurity(hsts -> hsts
+                    .includeSubDomains(true)
+                    .maxAgeInSeconds(31_536_000))
+                // Prevent clickjacking
+                .frameOptions(frame -> frame.deny())
+                // Prevent MIME sniffing
+                .contentTypeOptions(ct -> {})
+                // Referrer policy
+                .referrerPolicy(rp -> rp
+                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+            )
+
+            // ── Authorization ──────────────────────────────────────
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_URLS).permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/products/**").hasAnyRole("USER", "ADMIN")
-                .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAnyRole("ADMIN", "USER")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/products/**").hasAnyRole("ADMIN", "USER")
+                .requestMatchers(HttpMethod.GET,    "/api/v1/products/**").hasAnyRole("USER", "ADMIN")
+                .requestMatchers(HttpMethod.POST,   "/api/v1/products/**").hasAnyRole("USER", "ADMIN")
+                .requestMatchers(HttpMethod.PUT,    "/api/v1/products/**").hasAnyRole("USER", "ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
+
+            // ── Auth provider ──────────────────────────────────────
             .authenticationProvider(daoAuthenticationProvider())
+
+            // ── Filters: rate-limit first, then JWT ────────────────
+            .addFilterBefore(rateLimitFilter,         UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

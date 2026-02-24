@@ -9,6 +9,10 @@ import com.zest.productapi.dto.response.ProductResponse;
 import com.zest.productapi.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,22 +35,20 @@ public class ProductController {
     // ─── GET /api/v1/products ────────────────────────────────────────────────
 
     @GetMapping
-    @Operation(summary = "List all products (paginated, optional name search)")
+    @Operation(summary = "List all products",
+               description = "Returns a paginated list of products. Optionally filter by name.")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "OK"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized")
+    })
     public ResponseEntity<ApiResponse<PagedResponse<ProductResponse>>> getAllProducts(
-            @Parameter(description = "Filter by product name (partial match)")
+            @Parameter(description = "Filter by product name (partial, case-insensitive)")
             @RequestParam(required = false) String name,
 
-            @Parameter(description = "Page number (0-based)")
-            @RequestParam(defaultValue = "0") int page,
-
-            @Parameter(description = "Page size")
-            @RequestParam(defaultValue = "10") int size,
-
-            @Parameter(description = "Sort field")
-            @RequestParam(defaultValue = "id") String sortBy,
-
-            @Parameter(description = "Sort direction: asc or desc")
-            @RequestParam(defaultValue = "asc") String direction) {
+            @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0")  int page,
+            @Parameter(description = "Page size")              @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Sort field")             @RequestParam(defaultValue = "id") String sortBy,
+            @Parameter(description = "asc or desc")            @RequestParam(defaultValue = "asc") String direction) {
 
         Sort sort = direction.equalsIgnoreCase("desc")
                 ? Sort.by(sortBy).descending()
@@ -64,6 +66,10 @@ public class ProductController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get a single product by ID")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Found"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found")
+    })
     public ResponseEntity<ApiResponse<ProductResponse>> getProductById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(productService.getProductById(id)));
     }
@@ -71,19 +77,54 @@ public class ProductController {
     // ─── POST /api/v1/products ───────────────────────────────────────────────
 
     @PostMapping
-    @Operation(summary = "Create a new product")
+    @Operation(
+        summary = "Create a new product",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content  = @Content(
+                schema   = @Schema(implementation = ProductRequest.class),
+                examples = @ExampleObject(
+                    name  = "Sample request",
+                    value = """
+                            { "productName": "Widget Pro X" }
+                            """
+                )
+            )
+        )
+    )
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Created"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error")
+    })
     public ResponseEntity<ApiResponse<ProductResponse>> createProduct(
             @Valid @RequestBody ProductRequest request) {
 
-        ProductResponse created = productService.createProduct(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Product created", created));
+                .body(ApiResponse.success("Product created", productService.createProduct(request)));
     }
 
     // ─── PUT /api/v1/products/{id} ───────────────────────────────────────────
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update an existing product")
+    @Operation(
+        summary = "Update an existing product",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content  = @Content(
+                schema   = @Schema(implementation = ProductRequest.class),
+                examples = @ExampleObject(
+                    name  = "Sample request",
+                    value = """
+                            { "productName": "Widget Pro X – Revised" }
+                            """
+                )
+            )
+        )
+    )
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found")
+    })
     public ResponseEntity<ApiResponse<ProductResponse>> updateProduct(
             @PathVariable Long id,
             @Valid @RequestBody ProductRequest request) {
@@ -97,9 +138,14 @@ public class ProductController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete a product (ADMIN only)")
-    public ResponseEntity<ApiResponse<Void>> deleteProduct(@PathVariable Long id) {
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "Deleted"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden – ADMIN role required"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Not found")
+    })
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
         productService.deleteProduct(id);
-        return ResponseEntity.ok(ApiResponse.success("Product deleted", null));
+        return ResponseEntity.noContent().build();   // 204 No Content – correct REST semantics
     }
 
     // ─── GET /api/v1/products/{id}/items ─────────────────────────────────────
@@ -108,8 +154,7 @@ public class ProductController {
     @Operation(summary = "List items belonging to a product (paginated)")
     public ResponseEntity<ApiResponse<PagedResponse<ItemResponse>>> getItemsByProduct(
             @PathVariable Long id,
-
-            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "10") int size) {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("id").ascending());
@@ -120,13 +165,26 @@ public class ProductController {
     // ─── POST /api/v1/products/{id}/items ────────────────────────────────────
 
     @PostMapping("/{id}/items")
-    @Operation(summary = "Add an item to a product")
+    @Operation(
+        summary = "Add an item to a product",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content  = @Content(
+                schema   = @Schema(implementation = ItemRequest.class),
+                examples = @ExampleObject(
+                    name  = "Sample request",
+                    value = """
+                            { "quantity": 25 }
+                            """
+                )
+            )
+        )
+    )
     public ResponseEntity<ApiResponse<ItemResponse>> addItem(
             @PathVariable Long id,
             @Valid @RequestBody ItemRequest request) {
 
-        ItemResponse item = productService.addItemToProduct(id, request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Item added", item));
+                .body(ApiResponse.success("Item added", productService.addItemToProduct(id, request)));
     }
 }

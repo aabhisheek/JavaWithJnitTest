@@ -8,6 +8,8 @@ import com.zest.productapi.dto.response.ProductResponse;
 import com.zest.productapi.entity.Item;
 import com.zest.productapi.entity.Product;
 import com.zest.productapi.exception.ResourceNotFoundException;
+import com.zest.productapi.mapper.ItemMapper;
+import com.zest.productapi.mapper.ProductMapper;
 import com.zest.productapi.repository.ItemRepository;
 import com.zest.productapi.repository.ProductRepository;
 import com.zest.productapi.service.ProductService;
@@ -30,6 +32,8 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final ItemRepository    itemRepository;
+    private final ProductMapper     productMapper;
+    private final ItemMapper        itemMapper;
 
     // ─── Products ────────────────────────────────────────────────────────────
 
@@ -37,7 +41,7 @@ public class ProductServiceImpl implements ProductService {
     @Transactional(readOnly = true)
     public PagedResponse<ProductResponse> getAllProducts(Pageable pageable) {
         Page<ProductResponse> page = productRepository.findAll(pageable)
-                .map(ProductResponse::from);
+                .map(productMapper::toResponse);
         return PagedResponse.from(page);
     }
 
@@ -49,29 +53,28 @@ public class ProductServiceImpl implements ProductService {
         }
         Page<ProductResponse> page = productRepository
                 .findByProductNameContainingIgnoreCase(name, pageable)
-                .map(ProductResponse::from);
+                .map(productMapper::toResponse);
         return PagedResponse.from(page);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ProductResponse getProductById(Long id) {
-        return ProductResponse.from(findProductOrThrow(id));
+        return productMapper.toResponse(findProductOrThrow(id));
     }
 
     @Override
     @Transactional
     public ProductResponse createProduct(ProductRequest request) {
-        String username = currentUsername();
         Product product = Product.builder()
                 .productName(request.getProductName())
-                .createdBy(username)
+                .createdBy(currentUsername())
                 .createdOn(LocalDateTime.now())
                 .build();
 
         Product saved = productRepository.save(product);
         logProductActivity("CREATED", saved.getId());
-        return ProductResponse.from(saved);
+        return productMapper.toResponse(saved);
     }
 
     @Override
@@ -84,14 +87,13 @@ public class ProductServiceImpl implements ProductService {
 
         Product saved = productRepository.save(product);
         logProductActivity("UPDATED", saved.getId());
-        return ProductResponse.from(saved);
+        return productMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
     public void deleteProduct(Long id) {
-        Product product = findProductOrThrow(id);
-        productRepository.delete(product);
+        productRepository.delete(findProductOrThrow(id));
         logProductActivity("DELETED", id);
     }
 
@@ -104,7 +106,7 @@ public class ProductServiceImpl implements ProductService {
             throw new ResourceNotFoundException("Product", "id", productId);
         }
         Page<ItemResponse> page = itemRepository.findByProductId(productId, pageable)
-                .map(ItemResponse::from);
+                .map(itemMapper::toResponse);
         return PagedResponse.from(page);
     }
 
@@ -116,7 +118,7 @@ public class ProductServiceImpl implements ProductService {
                 .product(product)
                 .quantity(request.getQuantity())
                 .build();
-        return ItemResponse.from(itemRepository.save(item));
+        return itemMapper.toResponse(itemRepository.save(item));
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -130,14 +132,14 @@ public class ProductServiceImpl implements ProductService {
         return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 
-    /** Async audit-log – runs in background thread pool, never blocks the response. */
+    /** Async audit log – runs in background thread pool, never blocks the response. */
     @Async("taskExecutor")
     public void logProductActivity(String action, Long productId) {
         log.info("[AUDIT] action={} productId={} by={} at={}",
-                action, productId, currentUsernameAsync(), LocalDateTime.now());
+                action, productId, safeCurrentUsername(), LocalDateTime.now());
     }
 
-    private String currentUsernameAsync() {
+    private String safeCurrentUsername() {
         try {
             return SecurityContextHolder.getContext().getAuthentication().getName();
         } catch (Exception e) {

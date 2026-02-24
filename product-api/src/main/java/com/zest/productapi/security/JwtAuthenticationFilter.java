@@ -1,11 +1,14 @@
 package com.zest.productapi.security;
 
+import com.zest.productapi.service.TokenBlacklistService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -21,8 +24,9 @@ import java.io.IOException;
 @Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private final JwtTokenProvider    jwtTokenProvider;
+    private final JwtTokenProvider       jwtTokenProvider;
     private final UserDetailsServiceImpl userDetailsService;
+    private final TokenBlacklistService  tokenBlacklistService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest  request,
@@ -33,6 +37,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = extractToken(request);
 
         if (StringUtils.hasText(token) && jwtTokenProvider.validateToken(token)) {
+
+            // ── Blacklist check: reject tokens invalidated via logout ──────────
+            String jti = jwtTokenProvider.getJtiFromToken(token);
+            if (tokenBlacklistService.isBlacklisted(jti)) {
+                log.warn("Rejected blacklisted token jti={}", jti);
+                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.getWriter().write(
+                    "{\"success\":false,\"message\":\"Token has been invalidated – please log in again\"}");
+                return;
+            }
+
             String      username    = jwtTokenProvider.getUsernameFromToken(token);
             UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 

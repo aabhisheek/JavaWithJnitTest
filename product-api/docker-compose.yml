@@ -2,49 +2,64 @@ version: "3.9"
 
 services:
 
-  # ── PostgreSQL Database ────────────────────────────────────────────────────
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: product-db
     restart: unless-stopped
+    env_file: .env
     environment:
-      POSTGRES_DB:       productdb
-      POSTGRES_USER:     postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB:       ${DB_NAME}
+      POSTGRES_USER:     ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./logs/postgres:/var/log/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d productdb"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Spring Boot Application ────────────────────────────────────────────────
+  # ── Redis (access-token blacklist) ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: product-redis
+    restart: unless-stopped
+    command: >
+      sh -c '[ -z "${REDIS_PASSWORD}" ] && redis-server
+             || redis-server --requirepass "${REDIS_PASSWORD}"'
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Spring Boot App ────────────────────────────────────────────────────────
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: product-api
     restart: unless-stopped
+    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      DB_HOST:     postgres
-      DB_PORT:     5432
-      DB_NAME:     productdb
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      JWT_SECRET:  "ZestIndia2024SecretKeyForJWTTokenSigningMustBeAtLeast256BitsLong!"
-      JWT_ACCESS_EXPIRY:  900000
-      JWT_REFRESH_EXPIRY: 604800000
-      SERVER_PORT: 8080
+      redis:
+        condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${SERVER_PORT:-8080}:8080"
+    volumes:
+      - ./logs/app:/app/logs
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/api-docs || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -52,4 +67,6 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local

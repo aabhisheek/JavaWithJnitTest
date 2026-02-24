@@ -7,6 +7,7 @@ import com.zest.productapi.dto.response.AuthResponse;
 import com.zest.productapi.security.JwtTokenProvider;
 import com.zest.productapi.security.UserDetailsServiceImpl;
 import com.zest.productapi.service.AuthService;
+import com.zest.productapi.service.TokenBlacklistService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Set;
+
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -32,9 +34,10 @@ class AuthControllerTest {
     @Autowired private MockMvc      mockMvc;
     @Autowired private ObjectMapper objectMapper;
 
-    @MockBean private AuthService           authService;
-    @MockBean private JwtTokenProvider      jwtTokenProvider;
+    @MockBean private AuthService            authService;
+    @MockBean private JwtTokenProvider       jwtTokenProvider;
     @MockBean private UserDetailsServiceImpl userDetailsService;
+    @MockBean private TokenBlacklistService  tokenBlacklistService;
 
     private AuthResponse sampleAuthResponse() {
         return AuthResponse.of(
@@ -127,5 +130,23 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ─── POST /api/v1/auth/logout ─────────────────────────────────────────────
+
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(username = "testuser")
+    @DisplayName("POST /logout returns 200 for authenticated user")
+    void logout_returns200() throws Exception {
+        org.mockito.Mockito.doNothing().when(authService)
+                .logout(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.any());
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .with(csrf())
+                        .header("Authorization", "Bearer fake-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Logged out successfully"));
     }
 }

@@ -1,0 +1,283 @@
+{
+  "info": {
+    "name": "Product API – Zest India IT",
+    "description": "Complete collection for the Product REST API assignment.\n\n**Usage:**\n1. Import this collection in Postman.\n2. Set `baseUrl` variable (default: `http://localhost:8080`).\n3. Run `Register` or `Login` – the access & refresh tokens are captured automatically.\n4. All protected requests use the `accessToken` variable in the Authorization header.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:8080", "type": "string" },
+    { "key": "accessToken",  "value": "",                       "type": "string" },
+    { "key": "refreshToken", "value": "",                       "type": "string" },
+    { "key": "productId",    "value": "",                       "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "Auth",
+      "item": [
+
+        {
+          "name": "Register",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "if (pm.response.code === 201) {",
+              "  const data = pm.response.json().data;",
+              "  pm.collectionVariables.set('accessToken',  data.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', data.refreshToken);",
+              "  pm.test('Registered successfully', () => pm.response.to.have.status(201));",
+              "}"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/register", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"email\": \"admin@example.com\",\n  \"password\": \"admin123\",\n  \"roles\": [\"ROLE_ADMIN\", \"ROLE_USER\"]\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Login",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json().data;",
+              "  pm.collectionVariables.set('accessToken',  data.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', data.refreshToken);",
+              "  pm.test('Login successful', () => pm.response.to.have.status(200));",
+              "  pm.test('Access token present', () => pm.expect(data.accessToken).to.not.be.empty);",
+              "}"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Refresh Token",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json().data;",
+              "  pm.collectionVariables.set('accessToken',  data.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', data.refreshToken);",
+              "  pm.test('Token rotated', () => pm.response.to.have.status(200));",
+              "}"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/refresh-token", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","refresh-token"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Logout",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Logged out', () => pm.response.to.have.status(200));",
+              "pm.collectionVariables.set('accessToken',  '');",
+              "pm.collectionVariables.set('refreshToken', '');"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/logout", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","logout"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "Products",
+      "item": [
+
+        {
+          "name": "List Products (paginated)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Has content array', () => {",
+              "  pm.expect(pm.response.json().data.content).to.be.an('array');",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products?page=0&size=10&sortBy=id&direction=asc",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","products"],
+              "query": [
+                { "key": "page",      "value": "0"   },
+                { "key": "size",      "value": "10"  },
+                { "key": "sortBy",    "value": "id"  },
+                { "key": "direction", "value": "asc" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Search Products by Name",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/products?name=widget&page=0&size=5",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","products"],
+              "query": [
+                { "key": "name", "value": "widget" },
+                { "key": "page", "value": "0"      },
+                { "key": "size", "value": "5"      }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Get Product by ID",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Product id matches', () => {",
+              "  pm.expect(String(pm.response.json().data.id)).to.eql(pm.collectionVariables.get('productId'));",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","products","{{productId}}"] }
+          }
+        },
+
+        {
+          "name": "Create Product",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "const id = pm.response.json().data.id;",
+              "pm.collectionVariables.set('productId', String(id));",
+              "pm.test('Product id captured', () => pm.expect(id).to.be.a('number'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/products", "host": ["{{baseUrl}}"], "path": ["api","v1","products"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"Widget Pro X\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Update Product",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Name updated', () => {",
+              "  pm.expect(pm.response.json().data.productName).to.eql('Widget Pro X – Revised');",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "PUT",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","products","{{productId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"Widget Pro X – Revised\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Get Items for Product",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Items is array', () => pm.expect(pm.response.json().data.content).to.be.an('array'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}/items", "host": ["{{baseUrl}}"], "path": ["api","v1","products","{{productId}}","items"] }
+          }
+        },
+
+        {
+          "name": "Add Item to Product",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.test('Quantity correct', () => {",
+              "  pm.expect(pm.response.json().data.quantity).to.eql(25);",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}/items", "host": ["{{baseUrl}}"], "path": ["api","v1","products","{{productId}}","items"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 25\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Delete Product (ADMIN only)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 204', () => pm.response.to.have.status(204));",
+              "pm.collectionVariables.set('productId', '');"
+            ]}
+          }],
+          "request": {
+            "method": "DELETE",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "url": { "raw": "{{baseUrl}}/api/v1/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","products","{{productId}}"] }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}

@@ -10,7 +10,9 @@ import com.zest.productapi.repository.UserRepository;
 import com.zest.productapi.security.JwtTokenProvider;
 import com.zest.productapi.service.AuthService;
 import com.zest.productapi.service.RefreshTokenService;
+import com.zest.productapi.service.TokenBlacklistService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -18,11 +20,13 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthServiceImpl implements AuthService {
 
     private final AuthenticationManager authenticationManager;
@@ -30,6 +34,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder       passwordEncoder;
     private final JwtTokenProvider      jwtTokenProvider;
     private final RefreshTokenService   refreshTokenService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Override
     @Transactional
@@ -51,20 +56,17 @@ public class AuthServiceImpl implements AuthService {
                 .password(passwordEncoder.encode(request.getPassword()))
                 .roles(roles)
                 .build();
-
         userRepository.save(user);
 
-        // Auto-login after registration
         Authentication auth = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getUsername(), request.getPassword()));
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        String       accessToken  = jwtTokenProvider.generateAccessToken(auth);
-        RefreshToken refreshToken = refreshTokenService.createRefreshToken(request.getUsername());
+        String accessToken = jwtTokenProvider.generateAccessToken(auth);
+        String rawRefresh  = refreshTokenService.createRefreshToken(request.getUsername());
 
-        return AuthResponse.of(accessToken, refreshToken.getToken(),
-                user.getUsername(), user.getRoles());
+        return AuthResponse.of(accessToken, rawRefresh, user.getUsername(), user.getRoles());
     }
 
     @Override
@@ -74,12 +76,11 @@ public class AuthServiceImpl implements AuthService {
                         request.getUsername(), request.getPassword()));
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        String       accessToken  = jwtTokenProvider.generateAccessToken(auth);
-        RefreshToken refreshToken = refreshTokenService.createRefreshToken(request.getUsername());
+        String accessToken = jwtTokenProvider.generateAccessToken(auth);
+        String rawRefresh  = refreshTokenService.createRefreshToken(request.getUsername());
 
         User user = userRepository.findByUsername(request.getUsername()).orElseThrow();
-        return AuthResponse.of(accessToken, refreshToken.getToken(),
-                user.getUsername(), user.getRoles());
+        return AuthResponse.of(accessToken, rawRefresh, user.getUsername(), user.getRoles());
     }
 
     @Override
@@ -91,18 +92,29 @@ public class AuthServiceImpl implements AuthService {
         String username    = refreshToken.getUser().getUsername();
         String accessToken = jwtTokenProvider.generateTokenFromUsername(username);
 
-        // Token rotation – issue a brand-new refresh token
-        RefreshToken newRefreshToken = refreshTokenService.createRefreshToken(username);
+        // Rotation – old refresh token deleted, new one issued
+        String newRawRefresh = refreshTokenService.createRefreshToken(username);
 
         User user = refreshToken.getUser();
-        return AuthResponse.of(accessToken, newRefreshToken.getToken(),
-                user.getUsername(), user.getRoles());
+        return AuthResponse.of(accessToken, newRawRefresh, user.getUsername(), user.getRoles());
     }
 
     @Override
     @Transactional
-    public void logout(String username) {
+    public void logout(String username, String rawAccessToken) {
+        // 1. Invalidate refresh token
         refreshTokenService.deleteByUsername(username);
+
+        // 2. Blacklist the current access token so it can't be reused before its TTL
+        if (StringUtils.hasText(rawAccessToken)
+                && jwtTokenProvider.validateToken(rawAccessToken)) {
+
+            String jti = jwtTokenProvider.getJtiFromToken(rawAccessToken);
+            long   ttl = jwtTokenProvider.getRemainingValidityMillis(rawAccessToken);
+            tokenBlacklistService.blacklist(jti, ttl);
+            log.debug("Blacklisted access token on logout: jti={} ttl={}ms", jti, ttl);
+        }
+
         SecurityContextHolder.clearContext();
     }
 }

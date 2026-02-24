@@ -8,6 +8,7 @@ import com.zest.productapi.dto.response.ProductResponse;
 import com.zest.productapi.security.JwtTokenProvider;
 import com.zest.productapi.security.UserDetailsServiceImpl;
 import com.zest.productapi.service.ProductService;
+import com.zest.productapi.service.TokenBlacklistService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,9 +38,10 @@ class ProductControllerTest {
     @Autowired private MockMvc       mockMvc;
     @Autowired private ObjectMapper  objectMapper;
 
-    @MockBean private ProductService        productService;
-    @MockBean private JwtTokenProvider      jwtTokenProvider;
+    @MockBean private ProductService         productService;
+    @MockBean private JwtTokenProvider       jwtTokenProvider;
     @MockBean private UserDetailsServiceImpl userDetailsService;
+    @MockBean private TokenBlacklistService  tokenBlacklistService;
 
     private ProductResponse sampleResponse() {
         return ProductResponse.builder()
@@ -142,13 +144,12 @@ class ProductControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    @DisplayName("DELETE /api/v1/products/1 returns 200 for ADMIN")
-    void deleteProduct_admin_returns200() throws Exception {
+    @DisplayName("DELETE /api/v1/products/1 returns 204 for ADMIN")
+    void deleteProduct_admin_returns204() throws Exception {
         doNothing().when(productService).deleteProduct(1L);
 
         mockMvc.perform(delete("/api/v1/products/1").with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
+                .andExpect(status().isNoContent());
     }
 
     @Test

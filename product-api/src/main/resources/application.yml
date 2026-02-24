@@ -23,15 +23,51 @@ spring:
         jdbc:
           batch_size: 50
 
+  # ── Redis (access-token blacklist) ──────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          min-idle: 2
+
 # ── JWT ────────────────────────────────────────────────────────────────────────
 jwt:
   secret: ${JWT_SECRET:ZestIndia2024SecretKeyForJWTTokenSigningMustBeAtLeast256BitsLong!}
   access-token-expiration: ${JWT_ACCESS_EXPIRY:900000}       # 15 minutes
   refresh-token-expiration: ${JWT_REFRESH_EXPIRY:604800000}  # 7 days
 
+# ── App feature flags ──────────────────────────────────────────────────────────
+app:
+  token-blacklist:
+    enabled: true   # set to false in tests to skip Redis
+
 # ── Server ─────────────────────────────────────────────────────────────────────
 server:
   port: ${SERVER_PORT:8080}
+
+# ── Actuator ───────────────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: product-api
+    version: 1.0.0
+    description: Product REST API – Zest India IT Assignment
 
 # ── Swagger ────────────────────────────────────────────────────────────────────
 springdoc:
