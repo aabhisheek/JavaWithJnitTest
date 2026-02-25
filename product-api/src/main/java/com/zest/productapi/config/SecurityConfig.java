@@ -1,6 +1,6 @@
 package com.zest.productapi.config;
 
-import com.zest.productapi.filter.RateLimitFilter;
+import com.zest.productapi.security.RateLimitFilter;
 import com.zest.productapi.security.JwtAuthenticationFilter;
 import com.zest.productapi.security.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;

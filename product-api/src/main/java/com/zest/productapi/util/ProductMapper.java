@@ -1,4 +1,4 @@
-package com.zest.productapi.mapper;
+package com.zest.productapi.util;
 
 import com.zest.productapi.dto.response.ProductResponse;
 import com.zest.productapi.entity.Product;

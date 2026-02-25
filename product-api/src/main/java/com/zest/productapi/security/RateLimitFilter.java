@@ -1,4 +1,4 @@
-package com.zest.productapi.filter;
+package com.zest.productapi.security;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
